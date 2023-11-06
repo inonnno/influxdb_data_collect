@@ -20,32 +20,15 @@ const myQuery = async () => {
     )
   }
 }
+let documentId = 1
+let documentIds: { [key: string]: number } = {}
+let operation = ''
 export function activate({ subscriptions }: vscode.ExtensionContext) {
   // register a command that is invoked when the status bar
   // item is selected
   console.log('Active!')
   const myCommandId = 'sample.showSelectionCount'
-  subscriptions.push(
-    vscode.commands.registerCommand(myCommandId, () => {
-      /*
-      const changes = getalltext(vscode.window.activeTextEditor)
-      myStatusBarItem.text = `$(megaphone) ${changes} Add this text to InfluxDB`
-      console.log('changes:', changes)
-      const writeApi = influxDB.getWriteApi(org, bucket)
-      writeApi.useDefaultTags({ region: 'west' })
-      const point1 = new Point('temperature')
-        .tag('sensor_id', 'TLM010')
-        .floatField('value', changes)
-      writeApi.writePoint(point1)
-      writeApi.close().then(() => {
-        console.log('WRITE FINISHED')
-      })
-      vscode.window.showInformationMessage(
-        `Hi, here text: ${changes} has been added to InfluxDB`
-      )
-      */
-    })
-  )
+  subscriptions.push(vscode.commands.registerCommand(myCommandId, () => {}))
 
   // create a new status bar item that we can now manage
   myStatusBarItem = vscode.window.createStatusBarItem(
@@ -65,13 +48,38 @@ export function activate({ subscriptions }: vscode.ExtensionContext) {
     vscode.window.onDidChangeTextEditorSelection(updateStatusBarItem)
   )
   */
+  vscode.workspace.textDocuments.forEach((document) => {
+    const documentUri = document.uri.toString()
+    if (!documentIds[documentUri]) {
+      documentIds[documentUri] = documentId++
+      const id = documentIds[documentUri]
+      const initialText = document.getText()
+      console.log('Initial add:', initialText, 'in document', id)
+      WriteToInfluxDB(initialText, id.toString(), 'open')
+    }
+  })
 
   subscriptions.push(
-    vscode.workspace.onDidChangeTextDocument((event) =>
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      const documentUri = event.document.uri.toString()
+      if (!documentIds[documentUri]) {
+        documentIds[documentUri] = documentId++
+      }
       addTextToInfluxDB(event, event.document)
-    )
+    })
   )
-
+  subscriptions.push(
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      const documentUri = document.uri.toString()
+      if (!documentIds[documentUri]) {
+        documentIds[documentUri] = documentId++
+        const id = documentIds[documentUri]
+        const initialText = document.getText()
+        console.log('Initial add:', initialText, 'in document', id)
+        WriteToInfluxDB(initialText, id.toString(), 'open')
+      }
+    })
+  )
   // update status bar item once at start
   //updateStatusBarItem()
 }
@@ -90,25 +98,41 @@ function getalltext(editor: vscode.TextEditor | undefined): string {
   return text
 }
 
+function WriteToInfluxDB(text: string, id: string, operation: string) {
+  const writeApi = influxDB.getWriteApi(org, bucket)
+  writeApi.useDefaultTags({ region: 'VSCode Extension' })
+  const point1 = new Point('texts')
+    .tag('document_id', id)
+    .tag('operation', operation)
+    .stringField('value', text)
+  writeApi.writePoint(point1)
+  writeApi.close().then(() => {
+    console.log('WRITE FINISHED!')
+  })
+  vscode.window.showInformationMessage(
+    `Hi, here text: ${text} in document ${id} has been added to InfluxDB`
+  )
+}
+
 function addTextToInfluxDB(
   event: vscode.TextDocumentChangeEvent,
   document: vscode.TextDocument
 ) {
+  const id = documentIds[document.uri.toString()]
   const changes = event.contentChanges[0]
-  console.log('change:', changes)
-  console.log('type of change:', typeof changes)
   if (changes && changes.hasOwnProperty('text')) {
-    const writeApi = influxDB.getWriteApi(org, bucket)
-    writeApi.useDefaultTags({ region: 'txt' })
-    const point1 = new Point('texts')
-      .tag('sensor_id', 'TLM010')
-      .stringField('value', changes.text)
-    writeApi.writePoint(point1)
-    writeApi.close().then(() => {
-      console.log('WRITE FINISHED')
-    })
-    vscode.window.showInformationMessage(
-      `Hi, here text: ${changes.text} has been added to InfluxDB`
-    )
+    const { text, range } = changes
+    console.log(changes)
+    if (range.start.isEqual(range.end)) {
+      console.log('Add: ', text, 'in document', id)
+      operation = 'add'
+    } else if (text === '') {
+      console.log('Delete:', text, 'in document', id)
+      operation = 'delete'
+    } else {
+      console.log('Replace:', text, 'in document', id)
+      operation = 'replace'
+    }
+    WriteToInfluxDB(text, id.toString(), operation)
   }
 }
