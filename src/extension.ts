@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
 import { InfluxDB, Point } from '@influxdata/influxdb-client'
+import * as vsls from 'vsls'
 
 let myStatusBarItem: vscode.StatusBarItem
 const url = 'http://localhost:8086/'
@@ -23,7 +24,7 @@ const myQuery = async () => {
 let documentId = 1
 let documentIds: { [key: string]: number } = {}
 let operation = ''
-export function activate({ subscriptions }: vscode.ExtensionContext) {
+export async function activate({ subscriptions }: vscode.ExtensionContext) {
   // register a command that is invoked when the status bar
   // item is selected
   console.log('Active!')
@@ -48,6 +49,19 @@ export function activate({ subscriptions }: vscode.ExtensionContext) {
     vscode.window.onDidChangeTextEditorSelection(updateStatusBarItem)
   )
   */
+  const liveShare = await vsls.getApi()
+  if (liveShare) {
+    subscriptions.push(
+      liveShare.onDidChangePeers((e) => {
+        const peers = liveShare.peers
+        console.log('Peers:', peers)
+        e.added.forEach((peer) => {
+          console.log('New Peer Joined:', peer)
+        })
+      })
+    )
+  }
+
   vscode.workspace.textDocuments.forEach((document) => {
     const documentUri = document.uri.toString()
     if (!documentIds[documentUri]) {
@@ -61,6 +75,10 @@ export function activate({ subscriptions }: vscode.ExtensionContext) {
 
   subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
+      if (liveShare) {
+        const peer_edit = liveShare.getPeerForTextDocumentChangeEvent(event)
+        console.log('Peer that is edit:', peer_edit)
+      }
       const documentUri = event.document.uri.toString()
       if (!documentIds[documentUri]) {
         documentIds[documentUri] = documentId++
@@ -110,7 +128,7 @@ function WriteToInfluxDB(text: string, id: string, operation: string) {
     console.log('WRITE FINISHED!')
   })
   vscode.window.showInformationMessage(
-    `Hi, here text: ${text} in document ${id} has been added to InfluxDB`
+    `Operation ${operation} with ${text} in document ${id} has been added to InfluxDB`
   )
 }
 

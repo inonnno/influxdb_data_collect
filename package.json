@@ -34,6 +34,7 @@
     "typescript": "^5.2.2"
   },
   "dependencies": {
-    "@influxdata/influxdb-client": "^1.33.2"
+    "@influxdata/influxdb-client": "^1.33.2",
+    "vsls": "^1.0.4753"
   }
 }
