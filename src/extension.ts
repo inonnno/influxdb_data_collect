@@ -65,11 +65,12 @@ export async function activate({ subscriptions }: vscode.ExtensionContext) {
   vscode.workspace.textDocuments.forEach((document) => {
     const documentUri = document.uri.toString()
     if (!documentIds[documentUri]) {
+      const userId = getUserId()
       documentIds[documentUri] = documentId++
       const id = documentIds[documentUri]
       const initialText = document.getText()
       console.log('Initial add:', initialText, 'in document', id)
-      WriteToInfluxDB(initialText, id.toString(), 'open')
+      WriteToInfluxDB(initialText, id.toString(), 'open', userId)
     }
   })
 
@@ -80,21 +81,23 @@ export async function activate({ subscriptions }: vscode.ExtensionContext) {
         console.log('Peer that is edit:', peer_edit)
       }
       const documentUri = event.document.uri.toString()
+      const userId = getUserId()
       if (!documentIds[documentUri]) {
         documentIds[documentUri] = documentId++
       }
-      addTextToInfluxDB(event, event.document)
+      addTextToInfluxDB(event, event.document, userId)
     })
   )
   subscriptions.push(
     vscode.workspace.onDidOpenTextDocument((document) => {
       const documentUri = document.uri.toString()
       if (!documentIds[documentUri]) {
+        const userId = getUserId()
         documentIds[documentUri] = documentId++
         const id = documentIds[documentUri]
         const initialText = document.getText()
         console.log('Initial add:', initialText, 'in document', id)
-        WriteToInfluxDB(initialText, id.toString(), 'open')
+        WriteToInfluxDB(initialText, id.toString(), 'open', userId)
       }
     })
   )
@@ -107,7 +110,11 @@ function updateStatusBarItem(): void {
   myStatusBarItem.text = `$(megaphone) ${text} Add this text to InfluxDB`
   myStatusBarItem.show()
 }
-
+function getUserId(): string {
+  const userId = vscode.env.machineId
+  console.log('User ID:', userId)
+  return userId
+}
 function getalltext(editor: vscode.TextEditor | undefined): string {
   let text = ''
   if (editor) {
@@ -116,13 +123,19 @@ function getalltext(editor: vscode.TextEditor | undefined): string {
   return text
 }
 
-function WriteToInfluxDB(text: string, id: string, operation: string) {
+function WriteToInfluxDB(
+  text: string,
+  id: string,
+  operation: string,
+  userid: string = ''
+) {
   const writeApi = influxDB.getWriteApi(org, bucket)
   writeApi.useDefaultTags({ region: 'VSCode Extension' })
   const point1 = new Point('texts')
     .tag('document_id', id)
     .tag('operation', operation)
     .stringField('value', text)
+    .stringField('user_id', userid)
   writeApi.writePoint(point1)
   writeApi.close().then(() => {
     console.log('WRITE FINISHED!')
@@ -134,7 +147,8 @@ function WriteToInfluxDB(text: string, id: string, operation: string) {
 
 function addTextToInfluxDB(
   event: vscode.TextDocumentChangeEvent,
-  document: vscode.TextDocument
+  document: vscode.TextDocument,
+  user_id: string = ''
 ) {
   const id = documentIds[document.uri.toString()]
   const changes = event.contentChanges[0]
@@ -151,6 +165,6 @@ function addTextToInfluxDB(
       console.log('Replace:', text, 'in document', id)
       operation = 'replace'
     }
-    WriteToInfluxDB(text, id.toString(), operation)
+    WriteToInfluxDB(text, id.toString(), operation, user_id)
   }
 }
