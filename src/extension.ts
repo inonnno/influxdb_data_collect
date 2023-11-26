@@ -135,7 +135,7 @@ function WriteToInfluxDB(
     .tag('document_id', id)
     .tag('operation', operation)
     .stringField('value', text)
-    .stringField('user_id', userid)
+    .tag('user_id', userid)
   writeApi.writePoint(point1)
   writeApi.close().then(() => {
     console.log('WRITE FINISHED!')
