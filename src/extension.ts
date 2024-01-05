@@ -1,6 +1,5 @@
 import * as vscode from 'vscode'
 import { InfluxDB, Point } from '@influxdata/influxdb-client'
-import * as vsls from 'vsls'
 
 let myStatusBarItem: vscode.StatusBarItem
 const url = 'http://localhost:8086/'
@@ -48,7 +47,7 @@ export async function activate({ subscriptions }: vscode.ExtensionContext) {
   subscriptions.push(
     vscode.window.onDidChangeTextEditorSelection(updateStatusBarItem)
   )
-  */
+  
   const liveShare = await vsls.getApi()
   if (liveShare) {
     subscriptions.push(
@@ -61,25 +60,37 @@ export async function activate({ subscriptions }: vscode.ExtensionContext) {
       })
     )
   }
-
+*/
   vscode.workspace.textDocuments.forEach((document) => {
     const documentUri = document.uri.toString()
-    if (!documentIds[documentUri]) {
-      const userId = getUserId()
-      documentIds[documentUri] = documentId++
-      const id = documentIds[documentUri]
-      const initialText = document.getText()
-      console.log('Initial add:', initialText, 'in document', id)
-      WriteToInfluxDB(initialText, id.toString(), 'open', userId)
-    }
+    const userId = getUserId()
+    documentIds[documentUri] = documentId++
+    const id = documentIds[documentUri]
+    const initialText = document.getText()
+    console.log('Initial add:', initialText, 'in document', id)
+    const rangestart = new vscode.Position(0, 0)
+    const rangeend = new vscode.Position(0, 0)
+    const rangeOffset = 0
+    const rangeLength = 0
+    WriteToInfluxDB(
+      initialText,
+      rangestart,
+      rangeend,
+      rangeOffset,
+      rangeLength,
+      id.toString(),
+      'open',
+      userId
+    )
   })
 
   subscriptions.push(
     vscode.workspace.onDidChangeTextDocument((event) => {
-      if (liveShare) {
+      /*if (liveShare) {
         const peer_edit = liveShare.getPeerForTextDocumentChangeEvent(event)
         console.log('Peer that is edit:', peer_edit)
       }
+      */
       const documentUri = event.document.uri.toString()
       const userId = getUserId()
       if (!documentIds[documentUri]) {
@@ -95,9 +106,23 @@ export async function activate({ subscriptions }: vscode.ExtensionContext) {
         const userId = getUserId()
         documentIds[documentUri] = documentId++
         const id = documentIds[documentUri]
+
         const initialText = document.getText()
         console.log('Initial add:', initialText, 'in document', id)
-        WriteToInfluxDB(initialText, id.toString(), 'open', userId)
+        const rangestart = new vscode.Position(0, 0)
+        const rangeend = new vscode.Position(0, 0)
+        const rangeOffset = 0
+        const rangeLength = 0
+        WriteToInfluxDB(
+          initialText,
+          rangestart,
+          rangeend,
+          rangeOffset,
+          rangeLength,
+          id.toString(),
+          'open',
+          userId
+        )
       }
     })
   )
@@ -112,7 +137,6 @@ function updateStatusBarItem(): void {
 }
 function getUserId(): string {
   const userId = vscode.env.machineId
-  console.log('User ID:', userId)
   return userId
 }
 function getalltext(editor: vscode.TextEditor | undefined): string {
@@ -125,17 +149,28 @@ function getalltext(editor: vscode.TextEditor | undefined): string {
 
 function WriteToInfluxDB(
   text: string,
+  //rangestart.line, rangestart.character
+  rangestart: vscode.Position,
+  rangeend: vscode.Position,
+  rangeOffset: number,
+  rangeLength: number,
   id: string,
   operation: string,
   userid: string = ''
 ) {
   const writeApi = influxDB.getWriteApi(org, bucket)
   writeApi.useDefaultTags({ region: 'VSCode Extension' })
-  const point1 = new Point('texts')
+  const point1 = new Point('data_influxdb')
     .tag('document_id', id)
     .tag('operation', operation)
     .stringField('value', text)
     .tag('user_id', userid)
+    .tag('rangeOffset', rangeOffset.toString())
+    .tag('rangeLength', rangeLength.toString())
+    .tag('rangestart_line', rangestart.line.toString())
+    .tag('rangestart_character', rangestart.character.toString())
+    .tag('rangeend_line', rangeend.line.toString())
+    .tag('rangeend_character', rangeend.character.toString())
   writeApi.writePoint(point1)
   writeApi.close().then(() => {
     console.log('WRITE FINISHED!')
@@ -153,8 +188,10 @@ function addTextToInfluxDB(
   const id = documentIds[document.uri.toString()]
   const changes = event.contentChanges[0]
   if (changes && changes.hasOwnProperty('text')) {
-    const { text, range } = changes
-    console.log(changes)
+    const { text, range, rangeOffset, rangeLength } = changes
+    const rangestart = range.start
+    const rangeend = range.end
+    console.log('changes', changes)
     if (range.start.isEqual(range.end)) {
       console.log('Add: ', text, 'in document', id)
       operation = 'add'
@@ -165,6 +202,15 @@ function addTextToInfluxDB(
       console.log('Replace:', text, 'in document', id)
       operation = 'replace'
     }
-    WriteToInfluxDB(text, id.toString(), operation, user_id)
+    WriteToInfluxDB(
+      text,
+      rangestart,
+      rangeend,
+      rangeOffset,
+      rangeLength,
+      id.toString(),
+      operation,
+      user_id
+    )
   }
 }
